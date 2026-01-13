@@ -1,91 +1,80 @@
 // services/advancedHeaderParser.ts - FIXED VERSION
 export class AdvancedHeaderParser {
-  static parseFileContent(content: string): {
-    imus: Record<string, {
-      acceleration: { x: number[]; y: number[]; z: number[] };
-      gyroscope: { x: number[]; y: number[]; z: number[] };
-    }>;
-    gaitParameters: Record<string, number[]>;
-    timestamps: number[];
-    metadata: {
-      columnCount: number;
-      totalRows: number;
-      sampleRate: number;
-      sensorIds: string[];
-      hasGaitParameters: boolean;
-      originalHeader: string;
-    };
-  } {
-    const lines = content.split('\n').filter(line => line.trim() !== '');
-    
-    if (lines.length < 3) {
-      throw new Error('Invalid file format: insufficient lines');
-    }
-
-    const firstHeader = lines[0];
-    const secondHeader = lines[1];
-    
-    console.log('🔍 First header:', firstHeader);
-    console.log('🔍 Second header:', secondHeader);
-
-    // Extract column definitions from second header
-    const columnInfo = this.parseColumnHeader(secondHeader);
-    console.log('✅ Column info parsed:', columnInfo);
-
-    // Initialize data structures
-    const result = {
-      imus: {} as Record<string, any>,
-      gaitParameters: {} as Record<string, number[]>,
-      timestamps: [] as number[],
-      metadata: {
-        columnCount: columnInfo.totalColumns,
-        totalRows: 0,
-        sampleRate: 100,
-        sensorIds: columnInfo.sensorIds,
-        hasGaitParameters: columnInfo.hasGaitParameters,
-        originalHeader: secondHeader,
-      }
-    };
-
-    // Initialize IMU structures for all detected sensors
-    columnInfo.sensorIds.forEach(sensorId => {
-      const imuKey = `IMU${sensorId}`;
-      result.imus[imuKey] = {
-        acceleration: { x: [], y: [], z: [] },
-        gyroscope: { x: [], y: [], z: [] },
-      };
-      console.log(`📱 Initialized ${imuKey}`);
-    });
-
-    // Parse data lines
-    const dataStartLine = this.findDataStartLine(lines);
-    console.log(`📊 Data starts at line ${dataStartLine}, total lines: ${lines.length}`);
-
-    // Debug: Show first few data lines
-    for (let i = dataStartLine; i < Math.min(dataStartLine + 3, lines.length); i++) {
-      const line = lines[i];
-      if (!line.startsWith('#') && line.trim() !== '') {
-        const values = line.split(/\s+/).filter(v => v !== '').map(v => parseFloat(v));
-        console.log(`📝 Sample data line ${i}: ${values.length} values, first 5: ${values.slice(0, 5).join(', ')}`);
-      }
-    }
-
-    let rowCount = 0;
-for (let i = dataStartLine; i < lines.length; i++) {
-  const line = lines[i];
-  if (line.startsWith('#') || line.trim() === '') continue;
-
-  const values = line.split(/\s+/).filter(v => v !== '').map(v => parseFloat(v));
+  static parseFileContent(content: string): any {
+  const lines = content.split('\n').filter(line => line.trim() !== '');
   
-  // Check if we have enough values for at least timestamp + 1 value
-  if (values.length >= 2) {
-    // 1. Timestamp (always first column)
+  if (lines.length < 3) {
+    throw new Error('Invalid file format: insufficient lines');
+  }
+
+  // Find where data ends (#16 marker)
+  let dataEndLine = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().startsWith('#16')) {
+      dataEndLine = i;
+      console.log(`Stopping data parsing at line ${i} (#16 marker found)`);
+      break;
+    }
+  }
+
+  const firstHeader = lines[0];
+  const secondHeader = lines[1];
+  
+  // Parse column definitions
+  const columnInfo = this.parseColumnHeader(secondHeader);
+  
+  // Initialize result structure
+  const result = {
+    imus: {} as Record<string, any>,
+    gaitParameters: {} as Record<string, number[]>,
+    timestamps: [] as number[],
+    metadata: {
+      columnCount: columnInfo.totalColumns,
+      totalRows: 0,
+      sampleRate: 100,
+      sensorIds: columnInfo.sensorIds,
+      hasGaitParameters: columnInfo.hasGaitParameters,
+      originalHeader: secondHeader,
+      dataEndLine: dataEndLine, // Track where we stopped
+    }
+  };
+
+  // Initialize IMUs for all detected sensors
+  columnInfo.sensorIds.forEach(sensorId => {
+    const imuKey = `IMU${sensorId}`;
+    result.imus[imuKey] = {
+      acceleration: { x: [], y: [], z: [] },
+      gyroscope: { x: [], y: [], z: [] },
+    };
+  });
+
+  // Find data start line (skip headers, stop before #16)
+  const dataStartLine = this.findDataStartLine(lines);
+  
+  if (dataStartLine === -1 || dataStartLine >= dataEndLine) {
+    console.log('No valid data found before #16 marker');
+    return result;
+  }
+
+  // Parse only lines between dataStartLine and dataEndLine
+  console.log(`Parsing data from line ${dataStartLine} to ${dataEndLine - 1}`);
+  
+  for (let i = dataStartLine; i < dataEndLine; i++) {
+    const line = lines[i];
+    if (line.startsWith('#') || line.trim() === '') continue;
+
+    const values = line.split(/\s+/).filter(v => v !== '').map(v => parseFloat(v));
+    
+    // Skip lines that don't have enough values or have invalid timestamps
+    if (values.length < 2 || isNaN(values[0])) continue;
+    
     result.timestamps.push(values[0]);
     
-    // 2. Process sensors based on column layout
-    let valueIndex = 1; // Start after timestamp
+    // Process sensors based on column layout
+    // This part needs to match your specific column ordering
+    // You might need to adjust this based on your actual file format
+    let valueIndex = 1;
     
-    // Process each sensor definition
     for (const sensorDef of columnInfo.sensorDefinitions) {
       if (valueIndex >= values.length) break;
       
@@ -108,47 +97,33 @@ for (let i = dataStartLine; i < lines.length; i++) {
       
       valueIndex++;
     }
-    
-    rowCount++;
-    
-    // Debug: Show first few rows
-    if (rowCount <= 3) {
-      console.log(`📝 Row ${rowCount}: timestamp=${values[0]}, processed ${valueIndex - 1} sensor values`);
-    }
   }
-}
 
-result.metadata.totalRows = rowCount;
-console.log(`✅ Processed ${rowCount} rows with data`);
+  result.metadata.totalRows = result.timestamps.length;
+  
+  // Validate that all IMUs have the same number of data points
+  const imuKeys = Object.keys(result.imus);
+  if (imuKeys.length > 0) {
+    const firstImuKey = imuKeys[0];
+    const expectedLength = result.imus[firstImuKey].acceleration.x.length;
     
-    // Calculate actual sample rate from timestamps
-    if (result.timestamps.length > 1) {
-      const totalTime = result.timestamps[result.timestamps.length - 1] - result.timestamps[0];
-      result.metadata.sampleRate = totalTime > 0 ? 
-        (result.timestamps.length - 1) / totalTime : 100;
-    }
-
-    // Log summary
-    console.log('✅ Parsing complete:', {
-      totalRows: result.metadata.totalRows,
+    console.log('Data validation:', {
       timestamps: result.timestamps.length,
-      imus: Object.keys(result.imus),
-      imuDetails: Object.entries(result.imus).map(([key, imu]) => ({
+      expectedPointsPerIMU: expectedLength,
+      IMUCounts: imuKeys.map(key => ({
         key,
-        accX: imu.acceleration.x.length,
-        accY: imu.acceleration.y.length,
-        accZ: imu.acceleration.z.length,
-        gyroX: imu.gyroscope.x.length,
-        gyroY: imu.gyroscope.y.length,
-        gyroZ: imu.gyroscope.z.length,
-        firstAccX: imu.acceleration.x[0],
-        firstAccY: imu.acceleration.y[0],
-        firstAccZ: imu.acceleration.z[0],
+        accX: result.imus[key].acceleration.x.length,
+        accY: result.imus[key].acceleration.y.length,
+        accZ: result.imus[key].acceleration.z.length,
+        gyroX: result.imus[key].gyroscope.x.length,
+        gyroY: result.imus[key].gyroscope.y.length,
+        gyroZ: result.imus[key].gyroscope.z.length,
       }))
     });
-
-    return result;
   }
+
+  return result;
+}
 
   private static parseColumnHeader(headerLine: string): {
     totalColumns: number;
@@ -284,13 +259,41 @@ console.log(`✅ Processed ${rowCount} rows with data`);
   }
 
   private static findDataStartLine(lines: string[]): number {
-    // Skip header lines (starting with #)
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].startsWith('#') && lines[i].trim() !== '') {
-        console.log(`📄 Found data at line ${i}: ${lines[i].substring(0, 100)}...`);
-        return i;
+  console.log('🔍 Finding data start line...');
+  
+  // We need to skip:
+  // 1. #5 - Header line with metadata
+  // 2. #103 - Column definitions line
+  // 3. #16 and everything after it - Labels/metadata
+  
+  let dataStart = -1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Stop at #16 - everything after this is labels/metadata, not data
+    if (line.trim().startsWith('#16')) {
+      console.log(`⏹️ Found #16 at line ${i} - stopping data parsing here`);
+      break; // Stop processing any further lines
+    }
+    
+    // Look for the first non-# line that has numeric data (skip header lines)
+    if (!line.startsWith('#') && line.trim() !== '' && dataStart === -1) {
+      const values = line.split(/\s+/).filter(v => v !== '');
+      
+      // Check if this looks like data (first value should be a timestamp/number)
+      if (values.length > 0 && !isNaN(parseFloat(values[0]))) {
+        console.log(`📄 Found data at line ${i}: ${line.substring(0, 100)}...`);
+        dataStart = i;
+        // Don't break here - we need to check all lines up to #16
       }
     }
-    return 0;
   }
+  
+  if (dataStart === -1) {
+    console.log('❌ No data found before #16');
+  }
+  
+  return dataStart;
+}
 }

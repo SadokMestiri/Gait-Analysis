@@ -17,6 +17,7 @@ import { AdvancedHeaderParser } from './services/advancedHeaderParser';
 import { HeaderParser } from './services/headerParser';
 import * as XLSX from 'xlsx';
 import { Tab } from '@headlessui/react';
+import { ResultsView } from './components/DataVisualization/ResultsView';
 import { MultiIMUChart } from './components/DataVisualization/MultiIMUChart';
 import { IMUAccelerationChart } from './components/DataVisualization/IMUAccelerationChart';
 import { IMUGyroscopeChart } from './components/DataVisualization/IMUGyroscopeChart';
@@ -320,43 +321,119 @@ function App() {
   };
 
   const parseCompleteFile = (content: string) => {
-    try {
-      return AdvancedHeaderParser.parseFileContent(content);
-    } catch (error) {
-      console.error('Error in complete parsing:', error);
-      
-      // Fallback to EnhancedGaitParser
-      try {
-        const multiData = EnhancedGaitParser.extractMultiIMUData(content, []);
-        const timestamps = multiData.timestamps || [];
-        
-        // Create a complete data structure from multiData
-        const imus: Record<string, any> = {};
-        Object.entries(multiData.imus || {}).forEach(([imuKey, imuData]) => {
-          imus[imuKey] = {
-            acceleration: imuData.acceleration || { x: [], y: [], z: [] },
-            gyroscope: imuData.gyroscope || { x: [], y: [], z: [] },
-          };
-        });
-        
-        return {
-          imus,
-          gaitParameters: {},
-          timestamps,
-          metadata: {
-            columnCount: 0,
-            totalRows: timestamps.length,
-            sampleRate: 100,
-            sensorIds: Object.keys(imus),
-            hasGaitParameters: false,
-          }
-        };
-      } catch (fallbackError) {
-        console.error('Fallback parsing also failed:', fallbackError);
-        return null;
+  try {
+    return AdvancedHeaderParser.parseFileContent(content);
+  } catch (error) {
+    console.error('Error in complete parsing:', error);
+    
+    // Fallback: parse manually while properly stopping at #16
+    const lines = content.split('\n').filter(line => line.trim() !== '');
+    const result = {
+      imus: {} as Record<string, any>,
+      gaitParameters: {} as Record<string, number[]>,
+      timestamps: [] as number[],
+      metadata: {
+        columnCount: 0,
+        totalRows: 0,
+        sampleRate: 100,
+        sensorIds: [] as string[],
+        hasGaitParameters: false,
+      }
+    };
+    
+    // Find where #16 is
+    let dataEndLine = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('#16')) {
+        dataEndLine = i;
+        console.log(`Found #16 at line ${i} - data ends here`);
+        break;
       }
     }
-  };
+    
+    // Find data start (skip #5, #103, etc.)
+    let dataStartLine = 2;
+    for (let i = 2; i < dataEndLine; i++) {
+      if (!lines[i].startsWith('#') && lines[i].trim() !== '') {
+        dataStartLine = i;
+        break;
+      }
+    }
+    
+    console.log(`Parsing data from line ${dataStartLine} to ${dataEndLine - 1}`);
+    
+    // Initialize IMUs based on header analysis
+    // Based on your file format, there should be IMU0 and IMU1
+    result.imus['IMU0'] = {
+      acceleration: { x: [], y: [], z: [] },
+      gyroscope: { x: [], y: [], z: [] },
+    };
+    
+    result.imus['IMU1'] = {
+      acceleration: { x: [], y: [], z: [] },
+      gyroscope: { x: [], y: [], z: [] },
+    };
+    
+    // Parse only lines between dataStartLine and dataEndLine
+    for (let i = dataStartLine; i < dataEndLine; i++) {
+      const line = lines[i];
+      if (line.startsWith('#') || line.trim() === '') continue;
+      
+      const values = line.split(/\s+/).filter(v => v !== '').map(v => parseFloat(v));
+      
+      if (values.length >= 13) { // timestamp + 12 sensor values
+        result.timestamps.push(values[0]);
+        
+        // Parse according to the column layout:
+        // Column layout analysis (from your data format):
+        // 0: timestamp
+        // 1-3: IMU1 Acceleration X,Y,Z
+        // 4-6: IMU1 Gyroscope X,Y,Z
+        // 7-9: IMU0 Acceleration X,Y,Z
+        // 10-12: IMU0 Gyroscope X,Y,Z
+        
+        // IMU1 Acceleration
+        if (values[1] !== undefined) result.imus['IMU1'].acceleration.x.push(values[1]);
+        if (values[2] !== undefined) result.imus['IMU1'].acceleration.y.push(values[2]);
+        if (values[3] !== undefined) result.imus['IMU1'].acceleration.z.push(values[3]);
+        
+        // IMU1 Gyroscope
+        if (values[4] !== undefined) result.imus['IMU1'].gyroscope.x.push(values[4]);
+        if (values[5] !== undefined) result.imus['IMU1'].gyroscope.y.push(values[5]);
+        if (values[6] !== undefined) result.imus['IMU1'].gyroscope.z.push(values[6]);
+        
+        // IMU0 Acceleration
+        if (values[7] !== undefined) result.imus['IMU0'].acceleration.x.push(values[7]);
+        if (values[8] !== undefined) result.imus['IMU0'].acceleration.y.push(values[8]);
+        if (values[9] !== undefined) result.imus['IMU0'].acceleration.z.push(values[9]);
+        
+        // IMU0 Gyroscope
+        if (values[10] !== undefined) result.imus['IMU0'].gyroscope.x.push(values[10]);
+        if (values[11] !== undefined) result.imus['IMU0'].gyroscope.y.push(values[11]);
+        if (values[12] !== undefined) result.imus['IMU0'].gyroscope.z.push(values[12]);
+      }
+    }
+    
+    result.metadata.totalRows = result.timestamps.length;
+    result.metadata.sensorIds = Object.keys(result.imus);
+    result.metadata.columnCount = 13; // timestamp + 12 sensor values
+    
+    console.log('Fallback parsing results:', {
+      timestamps: result.timestamps.length,
+      IMU0: {
+        acc: result.imus['IMU0']?.acceleration?.x?.length || 0,
+        gyro: result.imus['IMU0']?.gyroscope?.x?.length || 0,
+      },
+      IMU1: {
+        acc: result.imus['IMU1']?.acceleration?.x?.length || 0,
+        gyro: result.imus['IMU1']?.gyroscope?.x?.length || 0,
+      },
+      firstTimestamps: result.timestamps.slice(0, 3),
+    });
+    
+    return result;
+  }
+};
 
   const setActiveFile = async (index: number, files = patientSensorFiles, patientName = selectedPatient) => {
     if (index < 0 || index >= files.length || !patientName) return;
@@ -517,11 +594,12 @@ function App() {
 
   const tabs = [
     { name: 'Complete Data', icon: '📊', color: 'from-blue-500 to-cyan-500' },
-    { name: 'Sensor Data', icon: '📡', color: 'from-purple-500 to-pink-500' },
+    { name: 'Records Data', icon: '📡', color: 'from-purple-500 to-pink-500' },
     { name: 'Gait Analysis', icon: '🚶', color: 'from-emerald-500 to-green-500' },
     { name: 'Range of Motion', icon: '🦵', color: 'from-orange-500 to-red-500' },
     { name: 'Step Analysis', icon: '👣', color: 'from-yellow-500 to-amber-500' },
     { name: 'File View', icon: '📄', color: 'from-gray-500 to-gray-600' },
+    { name: 'Results View', icon: '📈', color: 'from-indigo-500 to-violet-500' }, 
   ];
 
   const getCurrentFileInfo = () => {
@@ -741,12 +819,28 @@ function App() {
 const prepareChartData = (timestamps: number[], xData: number[], yData: number[], zData: number[], type: 'acceleration' | 'gyroscope') => {
   const chartData = [];
   
+  // Ensure we only process valid data points
   for (let i = 0; i < timestamps.length; i++) {
+    // Skip invalid timestamps (very large numbers that are likely headers)
+    if (timestamps[i] > 1000000) {
+      continue;
+    }
+    
+    // Skip invalid data points
+    const xVal = xData[i] || 0;
+    const yVal = yData[i] || 0;
+    const zVal = zData[i] || 0;
+    
+    // Skip extremely large values that are likely header data
+    if (Math.abs(xVal) > 100 || Math.abs(yVal) > 100 || Math.abs(zVal) > 100) {
+      continue;
+    }
+    
     chartData.push({
       time: timestamps[i],
-      x: xData[i] || 0,
-      y: yData[i] || 0,
-      z: zData[i] || 0,
+      x: xVal,
+      y: yVal,
+      z: zVal,
     });
   }
   
@@ -1130,6 +1224,29 @@ const prepareChartData = (timestamps: number[], xData: number[], yData: number[]
                       </div>
                     </div>
                   </Tab.Panel>
+                  {/* Tab 7: Results View */}
+<Tab.Panel>
+  <div className="space-y-8">
+    <div className="bg-gradient-to-r from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
+      <div className="flex items-center mb-6">
+        <div className="bg-gradient-to-r from-indigo-500/20 to-violet-500/20 w-12 h-12 rounded-xl flex items-center justify-center mr-4">
+          <span className="text-2xl">📈</span>
+        </div>
+        <div>
+          <h3 className="text-2xl font-bold text-white">Gait Analysis Results</h3>
+          <p className="text-gray-400">
+            Yaw, Roll, and Pitch analysis from processed gait data
+          </p>
+        </div>
+      </div>
+      
+      <ResultsView
+        patientName={selectedPatient}
+        records={records}
+      />
+    </div>
+  </div>
+</Tab.Panel>
                 </Tab.Panels>
               </Tab.Group>
 
