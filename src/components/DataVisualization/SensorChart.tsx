@@ -1,14 +1,7 @@
-import React from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import React, { useEffect, useRef } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
+import { UplotService } from '../../services/uplotService';
 import { SensorDataPoint } from '../../types/sensor.types';
 
 interface SensorChartProps {
@@ -24,67 +17,65 @@ export const SensorChart: React.FC<SensorChartProps> = ({
   title,
   height = 300,
 }) => {
-  const chartData = data.map((point, index) => ({
-    time: index,
-    x: sensorType === 'acceleration' ? point.acceleration.x : point.gyroscope.x,
-    y: sensorType === 'acceleration' ? point.acceleration.y : point.gyroscope.y,
-    z: sensorType === 'acceleration' ? point.acceleration.z : point.gyroscope.z,
-  }));
+  const chartRef = useRef<HTMLDivElement>(null);
+  const uplotRef = useRef<uPlot | null>(null);
+
+  useEffect(() => {
+    if (!chartRef.current || !data.length) return;
+
+    // Extract data
+    const timestamps = data.map((_, i) => i);
+    const dataSeries = {
+      x: data.map(p => sensorType === 'acceleration' ? p.acceleration.x : p.gyroscope.x),
+      y: data.map(p => sensorType === 'acceleration' ? p.acceleration.y : p.gyroscope.y),
+      z: data.map(p => sensorType === 'acceleration' ? p.acceleration.z : p.gyroscope.z),
+    };
+
+    const chartData = UplotService.prepareChartData(timestamps, dataSeries);
+
+    // Create options
+    const chartTitle = title || (sensorType === 'acceleration' ? 'Acceleration' : 'Gyroscope');
+    const opts = UplotService.createIMUChartOptions(
+      chartRef.current.clientWidth || 800,
+      height,
+      chartTitle
+    );
+
+    // Add series
+    opts.series!.push(UplotService.createAxisSeries('x', sensorType === 'acceleration'));
+    opts.series!.push(UplotService.createAxisSeries('y', sensorType === 'acceleration'));
+    opts.series!.push(UplotService.createAxisSeries('z', sensorType === 'acceleration'));
+
+    // Destroy previous chart if exists
+    if (uplotRef.current) {
+      uplotRef.current.destroy();
+    }
+
+    // Create new chart
+    const u = new uPlot(opts, chartData, chartRef.current);
+    uplotRef.current = u;
+
+    // Cleanup
+    return () => {
+      if (uplotRef.current) {
+        uplotRef.current.destroy();
+        uplotRef.current = null;
+      }
+    };
+  }, [data, sensorType, height, title]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div className="bg-gray-900/60 dark:bg-gray-900 rounded-lg p-4 shadow border border-gray-700/30">
       {title && (
-        <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">
+        <h3 className="text-lg font-semibold mb-4 text-white dark:text-gray-200">
           {title}
         </h3>
       )}
-      <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis
-            dataKey="time"
-            label={{ value: 'Time (samples)', position: 'insideBottom', offset: -5 }}
-            stroke="#9CA3AF"
-          />
-          <YAxis
-            label={{
-              value: sensorType === 'acceleration' ? 'Acceleration (g)' : 'Angular Velocity (°/s)',
-              angle: -90,
-              position: 'insideLeft',
-            }}
-            stroke="#9CA3AF"
-          />
-          <Tooltip
-            contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151' }}
-            labelStyle={{ color: '#D1D5DB' }}
-          />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey="x"
-            stroke="#EF4444"
-            strokeWidth={2}
-            dot={false}
-            name="X Axis"
-          />
-          <Line
-            type="monotone"
-            dataKey="y"
-            stroke="#10B981"
-            strokeWidth={2}
-            dot={false}
-            name="Y Axis"
-          />
-          <Line
-            type="monotone"
-            dataKey="z"
-            stroke="#3B82F6"
-            strokeWidth={2}
-            dot={false}
-            name="Z Axis"
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <div
+        ref={chartRef}
+        className="w-full rounded overflow-hidden"
+        style={{ height: `${height}px` }}
+      />
     </div>
   );
 };

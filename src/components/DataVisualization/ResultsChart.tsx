@@ -1,15 +1,8 @@
-// components/DataVisualization/ResultsChart.tsx - FIXED
-import React from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+// components/DataVisualization/ResultsChart.tsx - Migrated to uPlot
+import React, { useEffect, useRef, useMemo } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
+import { UplotService } from '../../services/uplotService';
 
 interface ResultsChartProps {
   data: {
@@ -31,36 +24,23 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({
   yAxisLabel = 'Value',
   height = 500,
 }) => {
-  // Prepare chart data - each phase point has all measurements
-  const chartData = data.timestamps.map((phase, phaseIndex) => {
-    const point: any = { phase };
-    
-    // Add each measurement value to the data point
-    if (data.values[phaseIndex]) {
-      data.values[phaseIndex].forEach((value, measurementIndex) => {
-        if (measurementIndex === 0) {
-          point.mean = value; // First value is always the mean
-        } else {
-          point[`m${measurementIndex}`] = value; // Individual measurements
-        }
-      });
-    }
-    
-    return point;
-  });
+  const chartRef = useRef<HTMLDivElement>(null);
+  const uplotRef = useRef<uPlot | null>(null);
 
   // Calculate statistics for the mean values
-  const meanValues = data.values.map(row => row[0] || 0);
-  const mean = meanValues.length > 0 ? 
-    meanValues.reduce((a, b) => a + b, 0) / meanValues.length : 0;
+  const meanValues = useMemo(() => data.values.map(row => row[0] || 0), [data.values]);
+  const mean = useMemo(() => 
+    meanValues.length > 0 ? meanValues.reduce((a, b) => a + b, 0) / meanValues.length : 0, 
+    [meanValues]
+  );
   
-  const stats = {
+  const stats = useMemo(() => ({
     min: meanValues.length > 0 ? Math.min(...meanValues) : 0,
     max: meanValues.length > 0 ? Math.max(...meanValues) : 0,
     mean: mean,
     stdDev: meanValues.length > 0 ? 
       Math.sqrt(meanValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / meanValues.length) : 0,
-  };
+  }), [meanValues, mean]);
 
   // Generate colors for each measurement line
   const generateMeasurementColors = (count: number): string[] => {
@@ -85,25 +65,104 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({
   };
 
   const measurementCount = data.columnCount || 1;
-  const measurementColors = generateMeasurementColors(measurementCount);
-  
-  // Create phase tick marks
-  const phaseIncrement = data.phaseIncrement || 0.01;
-  const phaseTicks = Array.from(
-    { length: Math.ceil(1 / phaseIncrement) + 1 },
-    (_, i) => i * phaseIncrement
-  ).filter(t => t <= 1);
+  const measurementColors = useMemo(() => 
+    generateMeasurementColors(measurementCount), 
+    [measurementCount, color]
+  );
 
-  // Custom tooltip formatter
-  const customTooltipFormatter = (value: number, name: string) => {
-    const numValue = Number(value);
-    if (name === 'mean') {
-      return [`${numValue.toFixed(4)}`, 'Mean of all measurements'];
-    } else {
-      const measurementNum = name.replace('m', '');
-      return [`${numValue.toFixed(4)}`, `Measurement #${measurementNum}`];
+  // uPlot initialization
+  useEffect(() => {
+    if (!chartRef.current || data.timestamps.length === 0) return;
+
+    // Prepare data for uPlot: [phases, mean, m1, m2, ...]
+    const phases = data.timestamps;
+    const chartDataArrays: (number | null)[][] = [phases];
+
+    // Add mean values (first column of values)
+    chartDataArrays.push(data.values.map(row => row[0] || null));
+
+    // Add individual measurement series (limit to 20 for performance)
+    const maxMeasurements = Math.min(measurementCount - 1, 20);
+    for (let i = 1; i <= maxMeasurements; i++) {
+      chartDataArrays.push(data.values.map(row => row[i] !== undefined ? row[i] : null));
     }
-  };
+
+    const chartData = chartDataArrays as uPlot.AlignedData;
+
+    const opts = UplotService.createResultsChartOptions(
+      chartRef.current.clientWidth || 800,
+      height,
+      undefined,
+      yAxisLabel
+    );
+
+    // Add mean series (thick, prominent line)
+    opts.series!.push({
+      label: 'Mean',
+      stroke: measurementColors[0],
+      width: 3,
+      fill: undefined,
+      points: { show: false },
+    });
+
+    // Add individual measurement series (thin, semi-transparent)
+    for (let i = 1; i <= maxMeasurements; i++) {
+      opts.series!.push({
+        label: `M${i}`,
+        stroke: measurementColors[i] || '#9CA3AF',
+        width: 1,
+        fill: undefined,
+        points: { show: false },
+        alpha: 0.4,
+      });
+    }
+
+    // Configure axes for phase data (0-1) - light theme
+    opts.axes = [
+      {
+        stroke: '#6b7280',
+        grid: { stroke: '#e5e7eb', width: 1 },
+        ticks: { stroke: '#d1d5db', width: 1 },
+        values: (u: uPlot, vals: number[]) => vals.map(v => v.toFixed(2)),
+      },
+      {
+        stroke: '#6b7280',
+        grid: { stroke: '#e5e7eb', width: 1 },
+        ticks: { stroke: '#d1d5db', width: 1 },
+      },
+    ];
+
+    // Cleanup previous instance
+    if (uplotRef.current) {
+      uplotRef.current.destroy();
+    }
+
+    const u = new uPlot(opts, chartData, chartRef.current);
+    uplotRef.current = u;
+
+    // Add double-click to reset zoom
+    UplotService.addResetZoom(u, chartData);
+
+    // Handle resize
+    const handleResize = () => {
+      if (chartRef.current && uplotRef.current) {
+        uplotRef.current.setSize({
+          width: chartRef.current.clientWidth,
+          height: height,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (uplotRef.current) {
+        uplotRef.current.destroy();
+        uplotRef.current = null;
+      }
+    };
+  }, [data, height, measurementColors, measurementCount, yAxisLabel]);
 
   return (
     <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
@@ -131,83 +190,11 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({
       </div>
       
       {/* Chart */}
-      <div style={{ height: `${height}px` }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" strokeOpacity={0.3} />
-            <XAxis 
-              dataKey="phase"
-              label={{ 
-                value: 'Normalized Gait Cycle Phase (0-1)', 
-                position: 'insideBottom', 
-                offset: -5,
-                style: { fill: '#9CA3AF' }
-              }}
-              stroke="#9CA3AF"
-              domain={[0, 1]}
-              ticks={phaseTicks}
-              tickFormatter={(value) => value.toFixed(2)}
-            />
-            <YAxis 
-              label={{ 
-                value: yAxisLabel, 
-                angle: -90, 
-                position: 'insideLeft',
-                style: { fill: '#9CA3AF' }
-              }}
-              stroke="#9CA3AF"
-            />
-            <Tooltip
-              contentStyle={{ 
-                backgroundColor: '#1F2937', 
-                borderColor: '#374151',
-                color: '#D1D5DB',
-                borderRadius: '8px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-              }}
-              formatter={customTooltipFormatter}
-              labelFormatter={(label) => `Phase: ${Number(label).toFixed(3)}`}
-            />
-            <Legend 
-              wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }}
-              formatter={(value) => {
-                if (value === 'mean') return 'Mean';
-                const num = value.toString().replace('m', '');
-                return `M${num}`;
-              }}
-            />
-            
-            {/* MEAN LINE - Thick and prominent */}
-            <Line
-              type="monotone"
-              dataKey="mean"
-              stroke={measurementColors[0]}
-              strokeWidth={3}
-              strokeOpacity={1}
-              dot={false}
-              name="mean"
-              activeDot={{ r: 8, fill: measurementColors[0], stroke: 'white', strokeWidth: 2 }}
-              isAnimationActive={false}
-            />
-            
-            {/* INDIVIDUAL MEASUREMENT LINES - Thin and semi-transparent */}
-            {measurementCount > 1 && Array.from({ length: Math.min(measurementCount - 1, 20) }).map((_, index) => (
-              <Line
-                key={`m${index + 1}`}
-                type="monotone"
-                dataKey={`m${index + 1}`}
-                stroke={measurementColors[index + 1] || '#9CA3AF'}
-                strokeWidth={1}
-                strokeOpacity={0.4}
-                dot={false}
-                name={`m${index + 1}`}
-                activeDot={{ r: 4, fill: measurementColors[index + 1] }}
-                isAnimationActive={false}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      <div
+        ref={chartRef}
+        className="w-full rounded-lg overflow-hidden"
+        style={{ height: `${height}px` }}
+      />
       
       {/* Statistics and Info */}
       <div className="mt-6">

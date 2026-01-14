@@ -9,6 +9,8 @@ import { EnhancedDataFileViewer } from './components/FileExplorer/EnhancedDataFi
 import { FileTree } from './components/FileExplorer/FileTree';
 import { MultiFileNavigator } from './components/FileExplorer/MultiFileNavigator';
 import { CompleteDataViewer } from './components/DataVisualization/CompleteDataViewer';
+import { IMUAccelerationChart } from './components/DataVisualization/IMUAccelerationChart';
+import { IMUGyroscopeChart } from './components/DataVisualization/IMUGyroscopeChart';
 import { useMedicalRecords } from './hooks/useMedicalRecords';
 import { useSensorData } from './hooks/useSensorData';
 import { useGaitAnalysis } from './hooks/useGaitAnalysis';
@@ -18,19 +20,8 @@ import { HeaderParser } from './services/headerParser';
 import * as XLSX from 'xlsx';
 import { Tab } from '@headlessui/react';
 import { ResultsView } from './components/DataVisualization/ResultsView';
-import { MultiIMUChart } from './components/DataVisualization/MultiIMUChart';
-import { IMUAccelerationChart } from './components/DataVisualization/IMUAccelerationChart';
-import { IMUGyroscopeChart } from './components/DataVisualization/IMUGyroscopeChart';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import './styles/uplot-theme.css';
+
 interface IMUAccelerationData {
   x: number[];
   y: number[];
@@ -676,136 +667,28 @@ function App() {
             
             {/* Vertical Stack of Charts */}
             <div className="space-y-8">
-              {/* Acceleration Chart */}
+              {/* Acceleration Chart - using uPlot */}
               {hasAccelData && timestamps.length > 0 && (
-                <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
-                  <div className="mb-6">
-                    <h4 className="text-lg font-semibold text-white">{imuKey} - Acceleration</h4>
-                    <p className="text-sm text-gray-400">
-                      Full dataset: {timestamps.length} points × 3 axes
-                    </p>
-                  </div>
-                  <div style={{ height: '500px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={prepareChartData(timestamps, accelX, accelY, accelZ, 'acceleration')}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="time"
-                          label={{ value: 'Time (s)', position: 'insideBottom', offset: -5 }}
-                          stroke="#9CA3AF"
-                        />
-                        <YAxis 
-                          label={{ 
-                            value: 'Acceleration (g)', 
-                            angle: -90, 
-                            position: 'insideLeft',
-                            style: { fill: '#9CA3AF' }
-                          }}
-                          stroke="#9CA3AF"
-                        />
-                        <Tooltip
-                          contentStyle={{ 
-                            backgroundColor: '#1F2937', 
-                            borderColor: '#374151',
-                            color: '#D1D5DB'
-                          }}
-                          formatter={(value) => [`${Number(value).toFixed(4)} g`, 'Acceleration']}
-                        />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="x"
-                          stroke="#EF4444"
-                          strokeWidth={1}
-                          dot={false}
-                          name="X Axis"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="y"
-                          stroke="#10B981"
-                          strokeWidth={1}
-                          dot={false}
-                          name="Y Axis"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="z"
-                          stroke="#3B82F6"
-                          strokeWidth={1}
-                          dot={false}
-                          name="Z Axis"
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                <IMUAccelerationChart
+                  timestamps={timestamps}
+                  xData={accelX}
+                  yData={accelY}
+                  zData={accelZ}
+                  title={`${imuKey} - Acceleration`}
+                  height={500}
+                />
               )}
               
-              {/* Gyroscope Chart */}
+              {/* Gyroscope Chart - using uPlot */}
               {hasGyroData && timestamps.length > 0 && (
-                <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
-                  <div className="mb-6">
-                    <h4 className="text-lg font-semibold text-white">{imuKey} - Gyroscope</h4>
-                    <p className="text-sm text-gray-400">
-                      Full dataset: {timestamps.length} points × 3 axes
-                    </p>
-                  </div>
-                  <div style={{ height: '500px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={prepareChartData(timestamps, gyroX, gyroY, gyroZ, 'gyroscope')}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="time"
-                          label={{ value: 'Time (s)', position: 'insideBottom', offset: -5 }}
-                          stroke="#9CA3AF"
-                        />
-                        <YAxis 
-                          label={{ 
-                            value: 'Angular Velocity (°/s)', 
-                            angle: -90, 
-                            position: 'insideLeft',
-                            style: { fill: '#9CA3AF' }
-                          }}
-                          stroke="#9CA3AF"
-                        />
-                        <Tooltip
-                          contentStyle={{ 
-                            backgroundColor: '#1F2937', 
-                            borderColor: '#374151',
-                            color: '#D1D5DB'
-                          }}
-                          formatter={(value) => [`${Number(value).toFixed(4)} °/s`, 'Angular Velocity']}
-                        />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="x"
-                          stroke="#F59E0B"
-                          strokeWidth={1}
-                          dot={false}
-                          name="X Axis"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="y"
-                          stroke="#EC4899"
-                          strokeWidth={1}
-                          dot={false}
-                          name="Y Axis"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="z"
-                          stroke="#8B5CF6"
-                          strokeWidth={1}
-                          dot={false}
-                          name="Z Axis"
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                <IMUGyroscopeChart
+                  timestamps={timestamps}
+                  xData={gyroX}
+                  yData={gyroY}
+                  zData={gyroZ}
+                  title={`${imuKey} - Gyroscope`}
+                  height={500}
+                />
               )}
             </div>
           </div>
@@ -815,37 +698,6 @@ function App() {
   );
 };
 
-// Helper function to prepare chart data from arrays
-const prepareChartData = (timestamps: number[], xData: number[], yData: number[], zData: number[], type: 'acceleration' | 'gyroscope') => {
-  const chartData = [];
-  
-  // Ensure we only process valid data points
-  for (let i = 0; i < timestamps.length; i++) {
-    // Skip invalid timestamps (very large numbers that are likely headers)
-    if (timestamps[i] > 1000000) {
-      continue;
-    }
-    
-    // Skip invalid data points
-    const xVal = xData[i] || 0;
-    const yVal = yData[i] || 0;
-    const zVal = zData[i] || 0;
-    
-    // Skip extremely large values that are likely header data
-    if (Math.abs(xVal) > 100 || Math.abs(yVal) > 100 || Math.abs(zVal) > 100) {
-      continue;
-    }
-    
-    chartData.push({
-      time: timestamps[i],
-      x: xVal,
-      y: yVal,
-      z: zVal,
-    });
-  }
-  
-  return chartData;
-};
   return (
     <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-black text-gray-100 flex flex-col overflow-hidden">
       {/* Top Navigation */}

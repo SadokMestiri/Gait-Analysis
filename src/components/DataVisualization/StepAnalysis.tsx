@@ -1,16 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-} from 'recharts';
+import React, { useState, useEffect, useRef } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
+import { UplotService } from '../../services/uplotService';
 import { GaitAnalysis } from '../../types/gait.types';
 import { SensorDataPoint } from '../../types/sensor.types';
 import { calculateStepDetection } from '../../utils/gaitCalculations';
@@ -26,6 +17,11 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
   sensorData,
   title = 'Step-by-Step Analysis',
 }) => {
+  const intervalChartRef = useRef<HTMLDivElement>(null);
+  const forceChartRef = useRef<HTMLDivElement>(null);
+  const intervalUplotRef = useRef<uPlot | null>(null);
+  const forceUplotRef = useRef<uPlot | null>(null);
+  
   const [stepEvents, setStepEvents] = useState<number[]>([]);
   const [stepIntervals, setStepIntervals] = useState<number[]>([]);
   const [stepForces, setStepForces] = useState<number[]>([]);
@@ -62,12 +58,6 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
     interval: i > 0 ? stepIntervals[i-1]?.toFixed(0) : 0,
   }));
 
-  const intervalData = stepIntervals.map((interval, i) => ({
-    step: i + 1,
-    interval,
-    deviation: Math.abs(interval - analysis.stepMetrics.stepTime * 1000),
-  }));
-
   const statistics = {
     totalSteps: stepEvents.length,
     avgStepTime: stepIntervals.length > 0 
@@ -81,6 +71,117 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
       ? (60 / (analysis.stepMetrics.stepTime || 1))
       : 0,
   };
+
+  // Step Intervals Chart
+  useEffect(() => {
+    if (!intervalChartRef.current || stepIntervals.length === 0) return;
+
+    const indices = stepIntervals.map((_, i) => i + 1);
+    const data: uPlot.AlignedData = [indices, stepIntervals];
+
+    const opts = UplotService.createBarChartOptions(
+      intervalChartRef.current.clientWidth || 400,
+      250,
+      undefined,
+      'Step Number',
+      'Time (ms)'
+    );
+
+    // Bar series
+    opts.series!.push({
+      label: 'Step Interval',
+      stroke: '#3B82F6',
+      width: 0,
+      fill: '#3B82F680',
+      paths: (u: uPlot, seriesIdx: number, idx0: number, idx1: number) => {
+        const { ctx } = u;
+        const yData = u.data[seriesIdx];
+        const xData = u.data[0];
+        const barWidth = 0.35;
+        
+        ctx.fillStyle = '#3B82F680';
+        ctx.strokeStyle = '#3B82F6';
+        ctx.lineWidth = 2;
+        
+        for (let i = idx0; i <= idx1; i++) {
+          const xVal = xData[i];
+          const yVal = yData[i];
+          
+          if (xVal != null && yVal != null) {
+            const xPos = u.valToPos(xVal - barWidth, 'x', true);
+            const xPosEnd = u.valToPos(xVal + barWidth, 'x', true);
+            const yPos = u.valToPos(yVal, 'y', true);
+            const yPosBase = u.valToPos(0, 'y', true);
+            
+            ctx.beginPath();
+            ctx.rect(xPos, yPos, xPosEnd - xPos, yPosBase - yPos);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // Draw average line
+        const avgY = u.valToPos(statistics.avgStepTime, 'y', true);
+        ctx.strokeStyle = '#EF4444';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(u.valToPos(0.5, 'x', true), avgY);
+        ctx.lineTo(u.valToPos(stepIntervals.length + 0.5, 'x', true), avgY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        return null;
+      },
+    });
+
+    if (intervalUplotRef.current) {
+      intervalUplotRef.current.destroy();
+    }
+
+    const u = new uPlot(opts, data, intervalChartRef.current);
+    intervalUplotRef.current = u;
+
+    return () => {
+      if (intervalUplotRef.current) {
+        intervalUplotRef.current.destroy();
+        intervalUplotRef.current = null;
+      }
+    };
+  }, [stepIntervals, statistics.avgStepTime]);
+
+  // Step Force Chart
+  useEffect(() => {
+    if (!forceChartRef.current || stepForces.length === 0) return;
+
+    const indices = stepForces.map((_, i) => i + 1);
+    const data: uPlot.AlignedData = [indices, stepForces];
+
+    const opts = UplotService.createAreaChartOptions(
+      forceChartRef.current.clientWidth || 400,
+      250,
+      undefined,
+      'Step',
+      'Force (g)'
+    );
+
+    // Area series
+    opts.series!.push(UplotService.createAreaSeries('Step Force', '#10B981', '#10B98140'));
+
+    if (forceUplotRef.current) {
+      forceUplotRef.current.destroy();
+    }
+
+    const u = new uPlot(opts, data, forceChartRef.current);
+    forceUplotRef.current = u;
+
+    return () => {
+      if (forceUplotRef.current) {
+        forceUplotRef.current.destroy();
+        forceUplotRef.current = null;
+      }
+    };
+  }, [stepForces]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow space-y-8">
@@ -121,42 +222,11 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
           <h4 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">
             Step Time Intervals
           </h4>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={intervalData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="step" 
-                label={{ value: 'Step Number', position: 'insideBottom', offset: -5 }}
-                stroke="#9CA3AF"
-              />
-              <YAxis 
-                label={{ 
-                  value: 'Time (ms)', 
-                  angle: -90, 
-                  position: 'insideLeft',
-                  style: { fill: '#9CA3AF' }
-                }}
-                stroke="#9CA3AF"
-              />
-              <Tooltip
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  borderColor: '#374151',
-                  color: '#D1D5DB'
-                }}
-                formatter={(value) => [`${value} ms`, 'Interval']}
-              />
-              <Bar dataKey="interval" name="Step Interval" fill="#3B82F6" />
-              <Line 
-                type="monotone" 
-                dataKey={() => statistics.avgStepTime} 
-                name="Average" 
-                stroke="#EF4444" 
-                strokeWidth={2}
-                dot={false}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          <div
+            ref={intervalChartRef}
+            className="w-full rounded-lg overflow-hidden"
+            style={{ height: '250px' }}
+          />
         </div>
 
         {/* Step Force Distribution */}
@@ -164,39 +234,11 @@ export const StepAnalysis: React.FC<StepAnalysisProps> = ({
           <h4 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">
             Step Force Pattern
           </h4>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={stepData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="step" 
-                stroke="#9CA3AF"
-              />
-              <YAxis 
-                stroke="#9CA3AF"
-                label={{ 
-                  value: 'Force (g)', 
-                  angle: -90, 
-                  position: 'insideLeft',
-                  style: { fill: '#9CA3AF' }
-                }}
-              />
-              <Tooltip
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  borderColor: '#374151',
-                  color: '#D1D5DB'
-                }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="force" 
-                name="Step Force" 
-                stroke="#10B981" 
-                fill="#10B981" 
-                fillOpacity={0.3}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div
+            ref={forceChartRef}
+            className="w-full rounded-lg overflow-hidden"
+            style={{ height: '250px' }}
+          />
         </div>
       </div>
 

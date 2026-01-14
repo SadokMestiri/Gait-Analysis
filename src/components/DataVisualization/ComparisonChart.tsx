@@ -1,14 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import React, { useState, useEffect, useRef } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
+import { UplotService } from '../../services/uplotService';
 import { GaitAnalysis } from '../../types/gait.types';
 import { useGaitAnalysis } from '../../hooks/useGaitAnalysis';
 
@@ -23,6 +16,8 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   patientId,
   title = 'Comparative Analysis',
 }) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const uplotRef = useRef<uPlot | null>(null);
   const { getPatientAnalyses } = useGaitAnalysis();
   const [patientAnalyses, setPatientAnalyses] = useState<GaitAnalysis[]>([]);
 
@@ -75,52 +70,131 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     },
   ];
 
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // Prepare data
+    const indices = comparisonData.map((_, i) => i);
+    const patientValues = comparisonData.map(d => d.patient);
+    const averageValues = comparisonData.map(d => d.average);
+
+    const data: uPlot.AlignedData = [indices, patientValues, averageValues];
+
+    // Create options
+    const opts = UplotService.createBarChartOptions(
+      chartRef.current.clientWidth || 600,
+      320,
+      undefined,
+      'Metric',
+      'Value'
+    );
+
+    // Patient series (bars)
+    opts.series!.push({
+      label: 'Patient',
+      stroke: '#3B82F6',
+      width: 0,
+      fill: '#3B82F680',
+      paths: (u: uPlot, seriesIdx: number, idx0: number, idx1: number) => {
+        const { ctx } = u;
+        const yData = u.data[seriesIdx];
+        const xData = u.data[0];
+        const barWidth = 0.2;
+        const offset = -0.15;
+        
+        ctx.fillStyle = '#3B82F680';
+        ctx.strokeStyle = '#3B82F6';
+        ctx.lineWidth = 2;
+        
+        for (let i = idx0; i <= idx1; i++) {
+          const xVal = xData[i];
+          const yVal = yData[i];
+          
+          if (xVal != null && yVal != null) {
+            const xPos = u.valToPos(xVal + offset - barWidth / 2, 'x', true);
+            const xPosEnd = u.valToPos(xVal + offset + barWidth / 2, 'x', true);
+            const yPos = u.valToPos(yVal, 'y', true);
+            const yPosBase = u.valToPos(0, 'y', true);
+            
+            ctx.beginPath();
+            ctx.roundRect(xPos, yPos, xPosEnd - xPos, yPosBase - yPos, 4);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        
+        return null;
+      },
+    });
+
+    // Average series (bars)
+    opts.series!.push({
+      label: 'Population Average',
+      stroke: '#6B7280',
+      width: 0,
+      fill: '#6B728080',
+      paths: (u: uPlot, seriesIdx: number, idx0: number, idx1: number) => {
+        const { ctx } = u;
+        const yData = u.data[seriesIdx];
+        const xData = u.data[0];
+        const barWidth = 0.2;
+        const offset = 0.15;
+        
+        ctx.fillStyle = '#6B728080';
+        ctx.strokeStyle = '#6B7280';
+        ctx.lineWidth = 2;
+        
+        for (let i = idx0; i <= idx1; i++) {
+          const xVal = xData[i];
+          const yVal = yData[i];
+          
+          if (xVal != null && yVal != null) {
+            const xPos = u.valToPos(xVal + offset - barWidth / 2, 'x', true);
+            const xPosEnd = u.valToPos(xVal + offset + barWidth / 2, 'x', true);
+            const yPos = u.valToPos(yVal, 'y', true);
+            const yPosBase = u.valToPos(0, 'y', true);
+            
+            ctx.beginPath();
+            ctx.roundRect(xPos, yPos, xPosEnd - xPos, yPosBase - yPos, 4);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        
+        return null;
+      },
+    });
+
+    // Custom X axis labels
+    opts.axes![0].values = (u, vals) => vals.map(v => comparisonData[v]?.metric || '');
+
+    // Destroy previous chart
+    if (uplotRef.current) {
+      uplotRef.current.destroy();
+    }
+
+    // Create chart
+    const u = new uPlot(opts, data, chartRef.current);
+    uplotRef.current = u;
+
+    return () => {
+      if (uplotRef.current) {
+        uplotRef.current.destroy();
+        uplotRef.current = null;
+      }
+    };
+  }, [currentAnalysis]);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow space-y-8">
       <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-6">{title}</h3>
 
       {/* Bar Chart */}
-      <div className="h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={comparisonData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis 
-              dataKey="metric" 
-              stroke="#9CA3AF"
-              tick={{ fill: '#9CA3AF' }}
-            />
-            <YAxis 
-              stroke="#9CA3AF"
-              tick={{ fill: '#9CA3AF' }}
-            />
-            <Tooltip
-              contentStyle={{ 
-                backgroundColor: '#1F2937', 
-                borderColor: '#374151',
-                color: '#D1D5DB'
-              }}
-              formatter={(value, name) => [
-                <span key={name as string}>{value as string}</span>,
-                name
-              ]}
-            />
-            <Legend />
-            <Bar 
-              dataKey="patient" 
-              name="Patient" 
-              fill="#3B82F6" 
-              radius={[4, 4, 0, 0]}
-            />
-            <Bar 
-              dataKey="average" 
-              name="Population Average" 
-              fill="#6B7280" 
-              radius={[4, 4, 0, 0]}
-              opacity={0.7}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      <div
+        ref={chartRef}
+        className="w-full rounded-lg overflow-hidden"
+        style={{ height: '320px' }}
+      />
 
       {/* Health Status Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

@@ -1,14 +1,7 @@
-import React from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import React, { useEffect, useRef } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
+import { UplotService } from '../../services/uplotService';
 
 interface MultiIMUChartProps {
   multiSensorData: {
@@ -27,6 +20,9 @@ export const MultiIMUChart: React.FC<MultiIMUChartProps> = ({
   title = 'Multi-IMU Sensor Data',
   height = 400,
 }) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const uplotRef = useRef<uPlot | null>(null);
+
   // Prepare chart data - combine all IMU data
   const imuKeys = Object.keys(multiSensorData.imus);
   
@@ -40,119 +36,86 @@ export const MultiIMUChart: React.FC<MultiIMUChartProps> = ({
       </div>
     );
   }
-  
-  // Create chart data - limit to first 100 points for performance
-  const maxPoints = 100;
-  const chartData = [];
-  
-  for (let i = 0; i < Math.min(maxPoints, multiSensorData.timestamps.length); i++) {
-    const point: any = {
-      time: multiSensorData.timestamps[i],
-    };
-    
-    // Add data from each IMU
-    imuKeys.forEach(imuKey => {
-      const imu = multiSensorData.imus[imuKey];
-      
-      // Acceleration
-      if (imu.acceleration.x.length > i) {
-        point[`${imuKey}_Acc_X`] = imu.acceleration.x[i];
-      }
-      if (imu.acceleration.y.length > i) {
-        point[`${imuKey}_Acc_Y`] = imu.acceleration.y[i];
-      }
-      if (imu.acceleration.z.length > i) {
-        point[`${imuKey}_Acc_Z`] = imu.acceleration.z[i];
-      }
-      
-      // Gyroscope
-      if (imu.gyroscope.x.length > i) {
-        point[`${imuKey}_Gyro_X`] = imu.gyroscope.x[i];
-      }
-      if (imu.gyroscope.y.length > i) {
-        point[`${imuKey}_Gyro_Y`] = imu.gyroscope.y[i];
-      }
-      if (imu.gyroscope.z.length > i) {
-        point[`${imuKey}_Gyro_Z`] = imu.gyroscope.z[i];
-      }
-    });
-    
-    chartData.push(point);
-  }
-  
+
   // Generate colors for each IMU
   const imuColors: Record<string, { acc: string; gyro: string }> = {
     IMU0: { acc: '#EF4444', gyro: '#F59E0B' }, // Red/Orange
     IMU1: { acc: '#10B981', gyro: '#3B82F6' }, // Green/Blue
     IMU2: { acc: '#8B5CF6', gyro: '#EC4899' }, // Purple/Pink
   };
-  
+
+  useEffect(() => {
+    if (!chartRef.current || !imuKeys.length) return;
+
+    // Build data series
+    const dataSeries: Record<string, number[]> = {};
+    
+    imuKeys.forEach(imuKey => {
+      const imu = multiSensorData.imus[imuKey];
+      
+      // Add acceleration
+      dataSeries[`${imuKey}_Acc_X`] = imu.acceleration.x;
+      dataSeries[`${imuKey}_Acc_Y`] = imu.acceleration.y;
+      dataSeries[`${imuKey}_Acc_Z`] = imu.acceleration.z;
+      
+      // Add gyroscope
+      dataSeries[`${imuKey}_Gyro_X`] = imu.gyroscope.x;
+      dataSeries[`${imuKey}_Gyro_Y`] = imu.gyroscope.y;
+      dataSeries[`${imuKey}_Gyro_Z`] = imu.gyroscope.z;
+    });
+
+    const data = UplotService.prepareChartData(multiSensorData.timestamps, dataSeries);
+
+    // Create options
+    const opts = UplotService.createMultiIMUChartOptions(
+      chartRef.current.clientWidth || 800,
+      height,
+      title
+    );
+
+    // Add series for each IMU
+    imuKeys.forEach(imuKey => {
+      // Acceleration
+      opts.series!.push(UplotService.createIMUSeries(imuKey, 'x', 'acc'));
+      opts.series!.push(UplotService.createIMUSeries(imuKey, 'y', 'acc'));
+      opts.series!.push(UplotService.createIMUSeries(imuKey, 'z', 'acc'));
+      
+      // Gyroscope
+      opts.series!.push(UplotService.createIMUSeries(imuKey, 'x', 'gyro'));
+      opts.series!.push(UplotService.createIMUSeries(imuKey, 'y', 'gyro'));
+      opts.series!.push(UplotService.createIMUSeries(imuKey, 'z', 'gyro'));
+    });
+
+    // Destroy previous chart if exists
+    if (uplotRef.current) {
+      uplotRef.current.destroy();
+    }
+
+    // Create new chart
+    const u = new uPlot(opts, data, chartRef.current);
+    uplotRef.current = u;
+
+    // Cleanup
+    return () => {
+      if (uplotRef.current) {
+        uplotRef.current.destroy();
+        uplotRef.current = null;
+      }
+    };
+  }, [multiSensorData, height, title, imuKeys]);
+
   return (
     <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
       <h3 className="text-xl font-semibold text-white mb-4">{title}</h3>
       <p className="text-sm text-gray-400 mb-6">
-        Showing {imuKeys.length} IMU(s) with {multiSensorData.timestamps.length} data points
+        Showing {imuKeys.length} IMU(s) with {multiSensorData.timestamps.length} data points | Zoom: Drag | Pan: Click+Drag | Reset: Double-click
       </p>
       
-      <div className="h-[400px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis 
-              dataKey="time"
-              label={{ value: 'Time (s)', position: 'insideBottom', offset: -5 }}
-              stroke="#9CA3AF"
-            />
-            <YAxis 
-              stroke="#9CA3AF"
-            />
-            <Tooltip
-              contentStyle={{ 
-                backgroundColor: '#1F2937', 
-                borderColor: '#374151',
-                color: '#D1D5DB'
-              }}
-            />
-            <Legend />
-            
-            {/* Render lines for each IMU */}
-            {imuKeys.map(imuKey => (
-              <React.Fragment key={imuKey}>
-                {/* Acceleration X */}
-                <Line
-                  type="monotone"
-                  dataKey={`${imuKey}_Acc_X`}
-                  stroke={imuColors[imuKey]?.acc || '#EF4444'}
-                  strokeWidth={1.5}
-                  dot={false}
-                  name={`${imuKey} Acc X`}
-                  activeDot={{ r: 4 }}
-                />
-                {/* Acceleration Y */}
-                <Line
-                  type="monotone"
-                  dataKey={`${imuKey}_Acc_Y`}
-                  stroke={imuColors[imuKey]?.acc || '#10B981'}
-                  strokeWidth={1.5}
-                  dot={false}
-                  name={`${imuKey} Acc Y`}
-                  activeDot={{ r: 4 }}
-                />
-                {/* Acceleration Z */}
-                <Line
-                  type="monotone"
-                  dataKey={`${imuKey}_Acc_Z`}
-                  stroke={imuColors[imuKey]?.acc || '#3B82F6'}
-                  strokeWidth={1.5}
-                  dot={false}
-                  name={`${imuKey} Acc Z`}
-                  activeDot={{ r: 4 }}
-                />
-              </React.Fragment>
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      <div
+        ref={chartRef}
+        className="w-full rounded-lg overflow-hidden"
+        style={{ height: `${height}px` }}
+      />
       
       {/* IMU Legend */}
       <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">

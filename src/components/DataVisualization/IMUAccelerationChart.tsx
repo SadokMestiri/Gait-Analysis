@@ -1,184 +1,186 @@
-import React from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import React, { useEffect, useRef, useMemo } from 'react';
+import uPlot from 'uplot';
+import 'uplot/dist/uPlot.min.css';
+import { UplotService } from '../../services/uplotService';
 
 interface IMUAccelerationChartProps {
-  imuData: {
+  // Support both data formats
+  imuData?: {
     acceleration: { x: number[]; y: number[]; z: number[] };
     timestamps: number[];
   };
-  imuKey: string;
+  imuKey?: string;
+  // Alternative props for direct data
+  timestamps?: number[];
+  xData?: number[];
+  yData?: number[];
+  zData?: number[];
+  title?: string;
   height?: number;
 }
 
 export const IMUAccelerationChart: React.FC<IMUAccelerationChartProps> = ({
   imuData,
   imuKey,
+  timestamps: directTimestamps,
+  xData,
+  yData,
+  zData,
+  title,
   height = 300,
 }) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const uplotRef = useRef<uPlot | null>(null);
+
+  // Normalize data from either props format
+  const normalizedData = useMemo(() => {
+    if (imuData) {
+      return {
+        timestamps: imuData.timestamps || [],
+        x: imuData.acceleration?.x || [],
+        y: imuData.acceleration?.y || [],
+        z: imuData.acceleration?.z || [],
+        title: imuKey ? `${imuKey} - Acceleration` : 'Acceleration',
+      };
+    } else {
+      return {
+        timestamps: directTimestamps || [],
+        x: xData || [],
+        y: yData || [],
+        z: zData || [],
+        title: title || 'Acceleration',
+      };
+    }
+  }, [imuData, imuKey, directTimestamps, xData, yData, zData, title]);
+
+  // Calculate statistics
+  const stats = useMemo(() => ({
+    x: {
+      min: normalizedData.x.length > 0 ? Math.min(...normalizedData.x) : 0,
+      max: normalizedData.x.length > 0 ? Math.max(...normalizedData.x) : 0,
+      mean: normalizedData.x.length > 0 ? 
+        normalizedData.x.reduce((a, b) => a + b, 0) / normalizedData.x.length : 0,
+    },
+    y: {
+      min: normalizedData.y.length > 0 ? Math.min(...normalizedData.y) : 0,
+      max: normalizedData.y.length > 0 ? Math.max(...normalizedData.y) : 0,
+      mean: normalizedData.y.length > 0 ? 
+        normalizedData.y.reduce((a, b) => a + b, 0) / normalizedData.y.length : 0,
+    },
+    z: {
+      min: normalizedData.z.length > 0 ? Math.min(...normalizedData.z) : 0,
+      max: normalizedData.z.length > 0 ? Math.max(...normalizedData.z) : 0,
+      mean: normalizedData.z.length > 0 ? 
+        normalizedData.z.reduce((a, b) => a + b, 0) / normalizedData.z.length : 0,
+    },
+  }), [normalizedData]);
+
   // Check if we have valid data
-  if (!imuData || !imuData.timestamps || imuData.timestamps.length === 0) {
+  const hasData = normalizedData.timestamps.length > 0;
+
+  useEffect(() => {
+    if (!chartRef.current || !hasData) return;
+
+    // Prepare data
+    const dataSeries = {
+      x: normalizedData.x,
+      y: normalizedData.y,
+      z: normalizedData.z,
+    };
+
+    const data = UplotService.prepareChartData(normalizedData.timestamps, dataSeries);
+
+    // Create options
+    const opts = UplotService.createIMUChartOptions(
+      chartRef.current.clientWidth || 800,
+      height,
+      `${normalizedData.title} (g)`
+    );
+
+    // Add series for each axis
+    opts.series!.push(UplotService.createAxisSeries('x', true));
+    opts.series!.push(UplotService.createAxisSeries('y', true));
+    opts.series!.push(UplotService.createAxisSeries('z', true));
+
+    // Destroy previous chart if exists
+    if (uplotRef.current) {
+      uplotRef.current.destroy();
+    }
+
+    // Create new chart
+    const u = new uPlot(opts, data, chartRef.current);
+    uplotRef.current = u;
+
+    // Add double-click to reset zoom
+    UplotService.addResetZoom(u, data);
+
+    // Cleanup
+    return () => {
+      if (uplotRef.current) {
+        uplotRef.current.destroy();
+        uplotRef.current = null;
+      }
+    };
+  }, [normalizedData, height, hasData]);
+
+  if (!hasData) {
     return (
-      <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
+      <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">{imuKey} - Acceleration</h3>
-            <p className="text-sm text-gray-400">Units: g (gravity)</p>
+            <h3 className="text-lg font-semibold text-gray-800">{normalizedData.title}</h3>
+            <p className="text-sm text-gray-500">Units: g (gravity)</p>
           </div>
         </div>
-        <div className="h-[300px] flex items-center justify-center">
-          <p className="text-gray-400">No acceleration data available</p>
+        <div className="flex items-center justify-center" style={{ height: `${height}px` }}>
+          <p className="text-gray-500">No acceleration data available</p>
         </div>
       </div>
     );
   }
 
-  // Prepare chart data - limit to first 200 points for performance
-  const maxPoints = 200;
-  const chartData = [];
-  
-  // Use the actual data length (minimum of all arrays)
-  const dataLength = Math.min(
-    maxPoints,
-    imuData.timestamps.length,
-    imuData.acceleration.x?.length || 0,
-    imuData.acceleration.y?.length || 0,
-    imuData.acceleration.z?.length || 0
-  );
-  
-  for (let i = 0; i < dataLength; i++) {
-    chartData.push({
-      time: imuData.timestamps[i],
-      x: imuData.acceleration.x[i] || 0,
-      y: imuData.acceleration.y[i] || 0,
-      z: imuData.acceleration.z[i] || 0,
-    });
-  }
-  
-  // Calculate statistics
-  const stats = {
-    x: {
-      min: imuData.acceleration.x?.length > 0 ? Math.min(...imuData.acceleration.x) : 0,
-      max: imuData.acceleration.x?.length > 0 ? Math.max(...imuData.acceleration.x) : 0,
-      mean: imuData.acceleration.x?.length > 0 ? 
-        imuData.acceleration.x.reduce((a, b) => a + b, 0) / imuData.acceleration.x.length : 0,
-    },
-    y: {
-      min: imuData.acceleration.y?.length > 0 ? Math.min(...imuData.acceleration.y) : 0,
-      max: imuData.acceleration.y?.length > 0 ? Math.max(...imuData.acceleration.y) : 0,
-      mean: imuData.acceleration.y?.length > 0 ? 
-        imuData.acceleration.y.reduce((a, b) => a + b, 0) / imuData.acceleration.y.length : 0,
-    },
-    z: {
-      min: imuData.acceleration.z?.length > 0 ? Math.min(...imuData.acceleration.z) : 0,
-      max: imuData.acceleration.z?.length > 0 ? Math.max(...imuData.acceleration.z) : 0,
-      mean: imuData.acceleration.z?.length > 0 ? 
-        imuData.acceleration.z.reduce((a, b) => a + b, 0) / imuData.acceleration.z.length : 0,
-    },
-  };
-
   return (
-    <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-lg rounded-2xl p-6 border border-gray-700/30 shadow-xl">
+    <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-white">{imuKey} - Acceleration</h3>
-          <p className="text-sm text-gray-400">Units: g (gravity)</p>
+          <h3 className="text-lg font-semibold text-gray-800">{normalizedData.title}</h3>
+          <p className="text-sm text-gray-500">Units: g (gravity) | Zoom: Drag to select | Reset: Double-click</p>
         </div>
-        <div className="text-sm text-gray-400">
-          {imuData.timestamps.length} samples
+        <div className="text-sm text-gray-600 font-medium">
+          {normalizedData.timestamps.length.toLocaleString()} samples
         </div>
       </div>
       
-      <div className="h-[300px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis 
-              dataKey="time"
-              label={{ value: 'Time (s)', position: 'insideBottom', offset: -5 }}
-              stroke="#9CA3AF"
-            />
-            <YAxis 
-              label={{ 
-                value: 'Acceleration (g)', 
-                angle: -90, 
-                position: 'insideLeft',
-                style: { fill: '#9CA3AF' }
-              }}
-              stroke="#9CA3AF"
-            />
-            <Tooltip
-              contentStyle={{ 
-                backgroundColor: '#1F2937', 
-                borderColor: '#374151',
-                color: '#D1D5DB'
-              }}
-              formatter={(value) => [`${Number(value).toFixed(4)} g`, 'Acceleration']}
-            />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="x"
-              stroke="#EF4444"
-              strokeWidth={2}
-              dot={false}
-              name="X Axis"
-              activeDot={{ r: 4 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="y"
-              stroke="#10B981"
-              strokeWidth={2}
-              dot={false}
-              name="Y Axis"
-              activeDot={{ r: 4 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="z"
-              stroke="#3B82F6"
-              strokeWidth={2}
-              dot={false}
-              name="Z Axis"
-              activeDot={{ r: 4 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      <div
+        ref={chartRef}
+        className="w-full rounded-lg overflow-hidden bg-gray-50 border border-gray-100"
+        style={{ height: `${height}px` }}
+      />
       
       {/* Statistics */}
       <div className="grid grid-cols-3 gap-4 mt-4">
-        <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-700/30">
-          <div className="text-xs text-gray-400 mb-1">X Axis</div>
+        <div className="bg-red-50 p-3 rounded-lg border border-red-100">
+          <div className="text-xs text-gray-600 mb-1 font-medium">X Axis</div>
           <div className="space-y-1">
-            <div className="text-sm text-red-300">Min: {stats.x.min.toFixed(4)}</div>
-            <div className="text-sm text-red-300">Max: {stats.x.max.toFixed(4)}</div>
-            <div className="text-sm text-red-300">Mean: {stats.x.mean.toFixed(4)}</div>
+            <div className="text-sm text-red-600">Min: {stats.x.min.toFixed(4)}</div>
+            <div className="text-sm text-red-600">Max: {stats.x.max.toFixed(4)}</div>
+            <div className="text-sm text-red-600 font-medium">Mean: {stats.x.mean.toFixed(4)}</div>
           </div>
         </div>
-        <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-700/30">
-          <div className="text-xs text-gray-400 mb-1">Y Axis</div>
+        <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+          <div className="text-xs text-gray-600 mb-1 font-medium">Y Axis</div>
           <div className="space-y-1">
-            <div className="text-sm text-green-300">Min: {stats.y.min.toFixed(4)}</div>
-            <div className="text-sm text-green-300">Max: {stats.y.max.toFixed(4)}</div>
-            <div className="text-sm text-green-300">Mean: {stats.y.mean.toFixed(4)}</div>
+            <div className="text-sm text-green-600">Min: {stats.y.min.toFixed(4)}</div>
+            <div className="text-sm text-green-600">Max: {stats.y.max.toFixed(4)}</div>
+            <div className="text-sm text-green-600 font-medium">Mean: {stats.y.mean.toFixed(4)}</div>
           </div>
         </div>
-        <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-700/30">
-          <div className="text-xs text-gray-400 mb-1">Z Axis</div>
+        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+          <div className="text-xs text-gray-600 mb-1 font-medium">Z Axis</div>
           <div className="space-y-1">
-            <div className="text-sm text-blue-300">Min: {stats.z.min.toFixed(4)}</div>
-            <div className="text-sm text-blue-300">Max: {stats.z.max.toFixed(4)}</div>
-            <div className="text-sm text-blue-300">Mean: {stats.z.mean.toFixed(4)}</div>
+            <div className="text-sm text-blue-600">Min: {stats.z.min.toFixed(4)}</div>
+            <div className="text-sm text-blue-600">Max: {stats.z.max.toFixed(4)}</div>
+            <div className="text-sm text-blue-600 font-medium">Mean: {stats.z.mean.toFixed(4)}</div>
           </div>
         </div>
       </div>

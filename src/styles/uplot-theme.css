@@ -1,0 +1,249 @@
+/* uplot light theme customization */
+
+.uplot-imu-chart,
+.uplot-multi-imu-chart,
+.uplot-bar-chart,
+.uplot-area-chart,
+.uplot-results-chart {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+/* Chart background */
+.uplot-imu-chart .u-wrap,
+.uplot-multi-imu-chart .u-wrap,
+.uplot-bar-chart .u-wrap,
+.uplot-area-chart .u-wrap,
+.uplot-results-chart .u-wrap {
+  background: #ffffff;
+  border-radius: 8px;
+}
+
+/* Grid lines */
+.uplot-imu-chart .u-grid,
+.uplot-multi-imu-chart .u-grid,
+.uplot-bar-chart .u-grid,
+.uplot-area-chart .u-grid,
+.uplot-results-chart .u-grid {
+  stroke: rgba(0, 0, 0, 0.1);
+}
+
+.uplot-imu-chart .u-tick,
+.uplot-multi-imu-chart .u-tick,
+.uplot-bar-chart .u-tick,
+.uplot-area-chart .u-tick,
+.uplot-results-chart .u-tick {
+  stroke: rgba(0, 0, 0, 0.2);
+}
+
+/* Axes */
+.uplot-imu-chart .u-axis,
+.uplot-multi-imu-chart .u-axis,
+.uplot-bar-chart .u-axis,
+.uplot-area-chart .u-axis,
+.uplot-results-chart .u-axis {
+  color: #374151;
+}
+
+.uplot-imu-chart .u-label,
+.uplot-multi-imu-chart .u-label,
+.uplot-bar-chart .u-label,
+.uplot-area-chart .u-label,
+.uplot-results-chart .u-label {
+  color: #1f2937;
+  font-weight: 500;
+}
+
+/* Cursor/Crosshair */
+.uplot-imu-chart .u-cursor-x,
+.uplot-imu-chart .u-cursor-y,
+.uplot-multi-imu-chart .u-cursor-x,
+.uplot-multi-imu-chart .u-cursor-y,
+.uplot-bar-chart .u-cursor-x,
+.uplot-bar-chart .u-cursor-y,
+.uplot-area-chart .u-cursor-x,
+.uplot-area-chart .u-cursor-y,
+.uplot-results-chart .u-cursor-x,
+.uplot-results-chart .u-cursor-y {
+  stroke: rgba(59, 130, 246, 0.6);
+  pointer-events: none;
+}
+
+/* Legend */
+.uplot-imu-chart .u-legend,
+.uplot-multi-imu-chart .u-legend,
+.uplot-bar-chart .u-legend,
+.uplot-area-chart .u-legend,
+.uplot-results-chart .u-legend {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  color: #1f2937;
+  font-size: 0.875rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.uplot-imu-chart .u-legend table,
+.uplot-multi-imu-chart .u-legend table,
+.uplot-bar-chart .u-legend table,
+.uplot-area-chart .u-legend table,
+.uplot-results-chart .u-legend table {
+  width: 100%;
+}
+
+.uplot-imu-chart .u-legend td,
+.uplot-multi-imu-chart .u-legend td,
+.uplot-bar-chart .u-legend td,
+.uplot-area-chart .u-legend td,
+.uplot-results-chart .u-legend td {
+  padding: 0.25rem 0.5rem;
+  border: none;
+}
+
+.uplot-imu-chart .u-legend .u-marker,
+.uplot-multi-imu-chart .u-legend .u-marker,
+.uplot-bar-chart .u-legend .u-marker,
+.uplot-area-chart .u-legend .u-marker,
+.uplot-results-chart .u-legend .u-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Hover effects */
+.uplot-imu-chart .u-legend .u-series.u-active,
+.uplot-multi-imu-chart .u-legend .u-series.u-active,
+.uplot-bar-chart .u-legend .u-series.u-active,
+.uplot-area-chart .u-legend .u-series.u-active,
+.uplot-results-chart .u-legend .u-series.u-active {
+  opacity: 1;
+}
+
+.uplot-imu-chart .u-legend .u-series:not(.u-active),
+.uplot-multi-imu-chart .u-legend .u-series:not(.u-active),
+.uplot-bar-chart .u-legend .u-series:not(.u-active),
+.uplot-area-chart .u-legend .u-series:not(.u-active),
+.uplot-results-chart .u-legend .u-series:not(.u-active) {
+  opacity: 0.5;
+}
+
+/* Series lines */
+.uplot-imu-chart svg,
+.uplot-multi-imu-chart svg,
+.uplot-bar-chart svg,
+.uplot-area-chart svg,
+.uplot-results-chart svg {
+  overflow: visible;
+}
+
+/* Smooth lines */
+.uplot-imu-chart .u-series,
+.uplot-multi-imu-chart .u-series,
+.uplot-bar-chart .u-series,
+.uplot-area-chart .u-series,
+.uplot-results-chart .u-series {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Better cursor tracking */
+.uplot-imu-chart .u-cursor,
+.uplot-multi-imu-chart .u-cursor,
+.uplot-bar-chart .u-cursor,
+.uplot-area-chart .u-cursor,
+.uplot-results-chart .u-cursor {
+  pointer-events: none;
+}
+
+/* Title styling */
+.uplot-imu-chart .u-title,
+.uplot-multi-imu-chart .u-title,
+.uplot-bar-chart .u-title,
+.uplot-area-chart .u-title,
+.uplot-results-chart .u-title {
+  color: #1f2937;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* Values in legend (for hover) */
+.uplot-imu-chart .u-legend .u-value,
+.uplot-multi-imu-chart .u-legend .u-value,
+.uplot-bar-chart .u-legend .u-value,
+.uplot-area-chart .u-legend .u-value,
+.uplot-results-chart .u-legend .u-value {
+  font-weight: 600;
+  color: #1f2937;
+  min-width: 80px;
+  text-align: right;
+}
+
+/* Custom tooltip overlay */
+.uplot-tooltip {
+  position: absolute;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #1f2937;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+.uplot-tooltip .tooltip-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151;
+}
+
+.uplot-tooltip .tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 3px 0;
+}
+
+.uplot-tooltip .tooltip-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.uplot-tooltip .tooltip-label {
+  color: #6b7280;
+}
+
+.uplot-tooltip .tooltip-value {
+  font-weight: 600;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .uplot-imu-chart .u-legend,
+  .uplot-multi-imu-chart .u-legend,
+  .uplot-bar-chart .u-legend,
+  .uplot-area-chart .u-legend,
+  .uplot-results-chart .u-legend {
+    font-size: 0.75rem;
+  }
+
+  .uplot-imu-chart .u-label,
+  .uplot-multi-imu-chart .u-label,
+  .uplot-bar-chart .u-label,
+  .uplot-area-chart .u-label,
+  .uplot-results-chart .u-label {
+    font-size: 0.75rem;
+  }
+}
