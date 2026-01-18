@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.14.0",
+    "uplot": "^1.6.23",
     "@emotion/styled": "^11.14.1",
     "@headlessui/react": "^2.2.9",
     "@mui/material": "^7.3.7",
